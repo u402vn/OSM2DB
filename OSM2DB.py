@@ -1,0 +1,280 @@
+﻿import sqlite3
+import xml.etree.ElementTree as ET
+from datetime import datetime
+
+conn = sqlite3.connect('osm_minks2.db')
+cursor = conn.cursor()
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Create tables')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS node (
+    nodeid INTEGER PRIMARY KEY,
+    uid TEXT,
+    user TEXT,
+    timestamp TEXT,
+    lat REAL,
+    lon REAL
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS nodetag (
+    nodeid INTEGER,
+    k TEXT,
+    v TEXT,
+    FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS way (
+    wayid INTEGER PRIMARY KEY,
+    uid TEXT,
+    user TEXT,
+    timestamp TEXT,
+
+    minLat REAL,
+    minLon REAL,
+    maxLat REAL,
+    maxLon REAL
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS waytag (
+    wayid INTEGER,
+    k TEXT,
+    v TEXT,
+    FOREIGN KEY (wayid) REFERENCES way(wayid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS node_way (
+    wayid INTEGER,
+    nodeid INTEGER,
+    internalOrder INTEGER,
+    FOREIGN KEY (wayid) REFERENCES way(wayid),
+    FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS relation (
+    relationid INTEGER PRIMARY KEY,
+    uid TEXT,
+    user TEXT,
+    timestamp TEXT,
+
+    minLat REAL,
+    minLon REAL,
+    maxLat REAL,
+    maxLon REAL
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS relationtag (
+    relationid INTEGER,
+    k TEXT,
+    v TEXT,
+    FOREIGN KEY (relationid) REFERENCES relation(relationid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS node_relation (
+    nodeid INTEGER,
+    relationid INTEGER,
+    role TEXT,
+    internalOrder INTEGER,
+    FOREIGN KEY (relationid) REFERENCES relation(relationid),
+    FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS way_relation (
+    wayid INTEGER,
+    relationid INTEGER,
+    role TEXT,
+    internalOrder INTEGER,
+    FOREIGN KEY (wayid) REFERENCES way(wayid),
+    FOREIGN KEY (relationid) REFERENCES relation(relationid)
+)
+''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS relation_relation (
+    relationid2 INTEGER,
+    relationid INTEGER,    
+    role TEXT,
+    internalOrder INTEGER,
+    FOREIGN KEY (relationid) REFERENCES relation(relationid),
+    FOREIGN KEY (relationid2) REFERENCES relation(relationid)
+)
+''')
+
+
+#tree = ET.parse('..\\planet_27.206,53.788_27.888,54.042.osm')
+#root = tree.getroot()
+#for child in root:
+    #pass
+
+
+context = ET.iterparse('..\\planet_27.206,53.788_27.888,54.042.osm', events=("start", "end"))
+
+nodeIndexCreated = False
+nodeid = 0
+wayid = 0
+relationid = 0
+
+nodeCount = 0
+
+
+
+for event, elem in context:
+    if event == 'end' and elem.tag in ['node', 'way', 'ralation']:
+        nodeid = 0
+        wayid = 0
+        relationid = 0
+        elem.clear()
+    if event == 'start':
+        if elem.tag == 'node':
+            nodeid = int(elem.attrib['id'])
+            uid = elem.attrib['uid']
+            user = elem.attrib['user']
+            timestamp = elem.attrib['timestamp']
+            lat = elem.attrib['lat']
+            lon = elem.attrib['lon']            
+            cursor.execute("INSERT INTO node(nodeid, uid, user, timestamp, lat, lon) VALUES (?, ?, ?, ?, ?, ?)", (nodeid, uid, user, timestamp, lat, lon))
+        elif elem.tag == 'way':
+            internalOrder = 0
+            wayid = int(elem.attrib['id'])
+            uid = elem.attrib['uid']
+            user = elem.attrib['user']
+            timestamp = elem.attrib['timestamp']
+            cursor.execute("INSERT INTO way(wayid, uid, user, timestamp) VALUES (?, ?, ?, ?)", (wayid, uid, user, timestamp))
+        elif elem.tag == 'relation':
+            internalOrder = 0
+            relationid = int(elem.attrib['id'])
+            uid = elem.attrib['uid']
+            user = elem.attrib['user']
+            timestamp = elem.attrib['timestamp']
+            cursor.execute("INSERT INTO relation(relationid, uid, user, timestamp) VALUES (?, ?, ?, ?)", (relationid, uid, user, timestamp))            
+        elif elem.tag == 'nd':
+            internalOrder += 1
+            nodeid_ref = int(elem.attrib['ref'])
+            cursor.execute("INSERT INTO node_way(wayid, nodeid, internalOrder) VALUES (?, ?, ?)", (wayid, nodeid_ref, internalOrder))
+        elif elem.tag == 'tag':
+            k = elem.attrib['k']
+            v = elem.attrib['v']
+            if nodeid:
+                cursor.execute("INSERT INTO nodetag(nodeid, k, v) VALUES (?, ?, ?)", (nodeid, k, v))
+            elif wayid:
+                cursor.execute("INSERT INTO waytag(wayid, k, v) VALUES (?, ?, ?)", (wayid, k, v))
+            elif relationid:
+                cursor.execute("INSERT INTO relationtag(relationid, k, v) VALUES (?, ?, ?)", (relationid, k, v))
+        elif elem.tag == 'member':
+            internalOrder += 1
+            memberType = elem.attrib['type']
+            id_ref = int(elem.attrib['ref'])
+            role = elem.attrib['role']
+            if relationid > 0:
+                if memberType == 'node':
+                    cursor.execute("INSERT INTO node_relation(nodeid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
+                elif memberType == 'way':
+                    cursor.execute("INSERT INTO way_relation(wayid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
+                elif memberType == 'relation':
+                    cursor.execute("INSERT INTO relation_relation(relationid2, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))                    
+                else:
+                    print('Type is not defined')
+            else:
+                print('Node is not defined')
+    elif event == 'end':
+        if elem.tag == 'way':
+            if nodeIndexCreated:
+                print(f'{datetime.now().strftime("%H:%M:%S")} Create index for node (lat, lon)')
+                cursor.execute('''create index node_lat_lon_idx on node (lat, lon)''')
+                conn.commit()
+                nodeIndexCreated = False
+
+    elem.clear()
+    nodeCount += 1
+    if nodeCount % 100000 == 0:
+        conn.commit()
+        print(f'{datetime.now().strftime("%H:%M:%S")} Processeed {nodeCount} elements')
+
+conn.commit()
+
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Update way bounding rectangles')
+cursor.execute('''
+UPDATE way AS w
+SET
+    minLat = sub.min_lat,
+    minLon = sub.min_lon,
+    maxLat = sub.max_lat,
+    maxLon = sub.max_lon
+FROM (
+    SELECT
+        nw.wayid,
+        MIN(n.lat) AS min_lat,
+        MIN(n.lon) AS min_lon,
+        MAX(n.lat) AS max_lat,
+        MAX(n.lon) AS max_lon
+    FROM node n
+    INNER JOIN node_way nw ON nw.nodeid = n.nodeid
+    GROUP BY nw.wayid
+) AS sub
+WHERE w.wayid = sub.wayid;
+''')
+conn.commit()
+
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Create index for way (minLat, minLon, maxLat, maxLon)')
+cursor.execute('''create index way_bounds_lat_lon_idx on way (minLat, minLon, maxLat, maxLon)''')
+conn.commit()
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Update relation bounding rectangles')
+for _ in range(3):
+    cursor.execute('''
+        UPDATE relation AS r
+        SET
+            minLat = sub.min_lat,
+            minLon = sub.min_lon,
+            maxLat = sub.max_lat,
+            maxLon = sub.max_lon
+        FROM (    
+	        SELECT
+	            coords.relationid,
+	            MIN(coords.lat) AS min_lat,
+	            MIN(coords.lon) AS min_lon,
+	            MAX(coords.lat) AS max_lat,
+	            MAX(coords.lon) AS max_lon
+	        FROM    
+	        (    
+		        select nr.relationid, n.lat, n.lon  from node_relation nr, node n where nr.nodeid = n.nodeid   
+		        union
+		        select wr.relationid, w.minLat, w.minLon from way_relation wr, way w where wr.wayid = w.wayid
+		        union
+		        select wr.relationid, w.maxLat, w.maxLon from way_relation wr, way w where wr.wayid = w.wayid
+		        union
+		        select r.relationid, r.minLat, r.minLon from relation_relation rr, relation r where rr.relationid2 = r.relationid 
+		        union
+		        select r.relationid, r.maxLat, r.maxLon from relation_relation rr, relation r where rr.relationid2 = r.relationid		
+	        ) coords
+	        group by coords.relationid 
+        ) as sub
+        WHERE r.relationid = sub.relationid and 
+        ( (r.minLat is null) or (r.minLat <> sub.min_lat)) and 
+        ( (r.minLon is null) or (r.minLon <> sub.min_lon)) and
+        ( (r.maxLat is null) or (r.maxLat <> sub.max_lat))  and 
+        ( (r.maxLon is null) or (r.maxLon <> sub.max_lon));
+    ''')
+conn.commit()
+
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Create index for relation (minLat, minLon, maxLat, maxLon)')
+cursor.execute('''create index relation_bounds_lat_lon_idx on way (minLat, minLon, maxLat, maxLon)''')
+conn.commit()
+
+
+print(f'{datetime.now().strftime("%H:%M:%S")} Vacuum')
+cursor.execute('''VACUUM''')
+conn.commit()
+
+print(f'{datetime.now().strftime("%H:%M:%S")} completed')
+
+
