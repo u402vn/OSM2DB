@@ -107,12 +107,6 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS relation_relation (
 ''')
 
 
-#tree = ET.parse('..\\planet_27.206,53.788_27.888,54.042.osm')
-#root = tree.getroot()
-#for child in root:
-    #pass
-
-
 context = ET.iterparse('..\\planet_27.206,53.788_27.888,54.042.osm', events=("start", "end"))
 
 nodeIndexCreated = False
@@ -121,8 +115,6 @@ wayid = 0
 relationid = 0
 
 nodeCount = 0
-
-
 
 for event, elem in context:
     if event == 'end' and elem.tag in ['node', 'way', 'ralation']:
@@ -137,7 +129,7 @@ for event, elem in context:
             user = elem.attrib['user']
             timestamp = elem.attrib['timestamp']
             lat = elem.attrib['lat']
-            lon = elem.attrib['lon']            
+            lon = elem.attrib['lon']
             cursor.execute("INSERT INTO node(nodeid, uid, user, timestamp, lat, lon) VALUES (?, ?, ?, ?, ?, ?)", (nodeid, uid, user, timestamp, lat, lon))
         elif elem.tag == 'way':
             internalOrder = 0
@@ -152,7 +144,7 @@ for event, elem in context:
             uid = elem.attrib['uid']
             user = elem.attrib['user']
             timestamp = elem.attrib['timestamp']
-            cursor.execute("INSERT INTO relation(relationid, uid, user, timestamp) VALUES (?, ?, ?, ?)", (relationid, uid, user, timestamp))            
+            cursor.execute("INSERT INTO relation(relationid, uid, user, timestamp) VALUES (?, ?, ?, ?)", (relationid, uid, user, timestamp))
         elif elem.tag == 'nd':
             internalOrder += 1
             nodeid_ref = int(elem.attrib['ref'])
@@ -236,31 +228,31 @@ for _ in range(3):
             minLon = sub.min_lon,
             maxLat = sub.max_lat,
             maxLon = sub.max_lon
-        FROM (    
+        FROM (
 	        SELECT
 	            coords.relationid,
 	            MIN(coords.lat) AS min_lat,
 	            MIN(coords.lon) AS min_lon,
 	            MAX(coords.lat) AS max_lat,
 	            MAX(coords.lon) AS max_lon
-	        FROM    
-	        (    
-		        select nr.relationid, n.lat, n.lon  from node_relation nr, node n where nr.nodeid = n.nodeid   
+	        FROM
+	        (
+		        select nr.relationid, n.lat, n.lon  from node_relation nr, node n where nr.nodeid = n.nodeid
 		        union
 		        select wr.relationid, w.minLat, w.minLon from way_relation wr, way w where wr.wayid = w.wayid
 		        union
 		        select wr.relationid, w.maxLat, w.maxLon from way_relation wr, way w where wr.wayid = w.wayid
 		        union
-		        select r.relationid, r.minLat, r.minLon from relation_relation rr, relation r where rr.relationid2 = r.relationid 
+		        select r.relationid, r.minLat, r.minLon from relation_relation rr, relation r where rr.relationid2 = r.relationid
 		        union
-		        select r.relationid, r.maxLat, r.maxLon from relation_relation rr, relation r where rr.relationid2 = r.relationid		
+		        select r.relationid, r.maxLat, r.maxLon from relation_relation rr, relation r where rr.relationid2 = r.relationid
 	        ) coords
-	        group by coords.relationid 
+	        group by coords.relationid
         ) as sub
-        WHERE r.relationid = sub.relationid and 
-        ( (r.minLat is null) or (r.minLat <> sub.min_lat)) and 
+        WHERE r.relationid = sub.relationid and
+        ( (r.minLat is null) or (r.minLat <> sub.min_lat)) and
         ( (r.minLon is null) or (r.minLon <> sub.min_lon)) and
-        ( (r.maxLat is null) or (r.maxLat <> sub.max_lat))  and 
+        ( (r.maxLat is null) or (r.maxLat <> sub.max_lat)) and
         ( (r.maxLon is null) or (r.maxLon <> sub.max_lon));
     ''')
 conn.commit()
@@ -276,5 +268,3 @@ cursor.execute('''VACUUM''')
 conn.commit()
 
 print(f'{datetime.now().strftime("%H:%M:%S")} completed')
-
-
