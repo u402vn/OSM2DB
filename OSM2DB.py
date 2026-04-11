@@ -29,7 +29,9 @@ def prepareDb(dbFile: str):
         nodeid INTEGER,
         k TEXT,
         v TEXT,
-        FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+        FOREIGN KEY (nodeid) REFERENCES node(nodeid),
+
+        UNIQUE (nodeid, k, v)
     )
     ''')
 
@@ -50,7 +52,9 @@ def prepareDb(dbFile: str):
         wayid INTEGER,
         k TEXT,
         v TEXT,
-        FOREIGN KEY (wayid) REFERENCES way(wayid)
+        FOREIGN KEY (wayid) REFERENCES way(wayid),
+
+        UNIQUE (wayid, k, v)
     )
     ''')
 
@@ -59,7 +63,9 @@ def prepareDb(dbFile: str):
         nodeid INTEGER,
         internalOrder INTEGER,
         FOREIGN KEY (wayid) REFERENCES way(wayid),
-        FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+        FOREIGN KEY (nodeid) REFERENCES node(nodeid),
+
+        UNIQUE (wayid, nodeid)
     )
     ''')
 
@@ -80,7 +86,9 @@ def prepareDb(dbFile: str):
         relationid INTEGER,
         k TEXT,
         v TEXT,
-        FOREIGN KEY (relationid) REFERENCES relation(relationid)
+        FOREIGN KEY (relationid) REFERENCES relation(relationid),
+
+        UNIQUE (relationid, k, v)
     )
     ''')
 
@@ -90,7 +98,9 @@ def prepareDb(dbFile: str):
         role TEXT,
         internalOrder INTEGER,
         FOREIGN KEY (relationid) REFERENCES relation(relationid),
-        FOREIGN KEY (nodeid) REFERENCES node(nodeid)
+        FOREIGN KEY (nodeid) REFERENCES node(nodeid),
+
+        UNIQUE (relationid, nodeid, role)
     )
     ''')
 
@@ -100,7 +110,9 @@ def prepareDb(dbFile: str):
         role TEXT,
         internalOrder INTEGER,
         FOREIGN KEY (wayid) REFERENCES way(wayid),
-        FOREIGN KEY (relationid) REFERENCES relation(relationid)
+        FOREIGN KEY (relationid) REFERENCES relation(relationid),
+
+        UNIQUE (relationid, wayid, role)
     )
     ''')
 
@@ -110,7 +122,9 @@ def prepareDb(dbFile: str):
         role TEXT,
         internalOrder INTEGER,
         FOREIGN KEY (relationid) REFERENCES relation(relationid),
-        FOREIGN KEY (relationid2) REFERENCES relation(relationid)
+        FOREIGN KEY (relationid2) REFERENCES relation(relationid),
+
+        UNIQUE (relationid, relationid2, role)
     )
     ''')
 
@@ -162,16 +176,16 @@ def importXml2Db(xmlFile: str, dbFile: str):
             elif elem.tag == 'nd':
                 internalOrder += 1
                 nodeid_ref = int(elem.attrib['ref'])
-                cursor.execute("INSERT INTO node_way(wayid, nodeid, internalOrder) VALUES (?, ?, ?)", (wayid, nodeid_ref, internalOrder))
+                cursor.execute("INSERT OR IGNORE INTO node_way(wayid, nodeid, internalOrder) VALUES (?, ?, ?)", (wayid, nodeid_ref, internalOrder))
             elif elem.tag == 'tag':
                 k = elem.attrib['k']
                 v = elem.attrib['v']
                 if nodeid:
-                    cursor.execute("INSERT INTO nodetag(nodeid, k, v) VALUES (?, ?, ?)", (nodeid, k, v))
+                    cursor.execute("INSERT OR IGNORE INTO nodetag(nodeid, k, v) VALUES (?, ?, ?)", (nodeid, k, v))
                 elif wayid:
-                    cursor.execute("INSERT INTO waytag(wayid, k, v) VALUES (?, ?, ?)", (wayid, k, v))
+                    cursor.execute("INSERT OR IGNORE INTO waytag(wayid, k, v) VALUES (?, ?, ?)", (wayid, k, v))
                 elif relationid:
-                    cursor.execute("INSERT INTO relationtag(relationid, k, v) VALUES (?, ?, ?)", (relationid, k, v))
+                    cursor.execute("INSERT OR IGNORE INTO relationtag(relationid, k, v) VALUES (?, ?, ?)", (relationid, k, v))
             elif elem.tag == 'member':
                 internalOrder += 1
                 memberType = elem.attrib['type']
@@ -179,11 +193,11 @@ def importXml2Db(xmlFile: str, dbFile: str):
                 role = elem.attrib['role']
                 if relationid > 0:
                     if memberType == 'node':
-                        cursor.execute("INSERT INTO node_relation(nodeid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
+                        cursor.execute("INSERT OR IGNORE INTO node_relation(nodeid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
                     elif memberType == 'way':
-                        cursor.execute("INSERT INTO way_relation(wayid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
+                        cursor.execute("INSERT OR IGNORE INTO way_relation(wayid, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))
                     elif memberType == 'relation':
-                        cursor.execute("INSERT INTO relation_relation(relationid2, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))                    
+                        cursor.execute("INSERT OR IGNORE INTO relation_relation(relationid2, relationid, role, internalOrder) VALUES (?, ?, ?, ?)", (id_ref, relationid, role, internalOrder))                    
                     else:
                         print('Type is not defined')
                 else:
@@ -298,11 +312,12 @@ def downloadOSMXml(xmlFolder: str, dbFile: str, fromLat: float, fromLon: float, 
     toLat = math.ceil(toLat / step) * step
     toLon = math.ceil(toLon / step) * step
 
-    maxStep = 0.4
+    maxStep = 0.3
     minStep = 0.000001
     latStep = step 
     lonStep = step
     currentLat = fromLat
+    requestNo = 0
 
     def __fixLonStep(k: float):
         nonlocal lonStep
@@ -311,12 +326,19 @@ def downloadOSMXml(xmlFolder: str, dbFile: str, fromLat: float, fromLon: float, 
         if k < 1:
             sleep(1)
 
+
+    
+
     while currentLat <= toLat:
         currentLon = fromLon
         while currentLon <= toLon:
-            url = f"""https://api.openstreetmap.org/api/0.6/map?bbox={currentLat},{currentLon},{currentLat + latStep},{currentLon + lonStep}"""
+            requestNo += 1
+            if requestNo % 2 == 0:
+                url = f"""https://api.openstreetmap.org/api/0.6/map?bbox={currentLon},{currentLat},{currentLon + lonStep},{currentLat + latStep}"""
+            else:
+                url = f"""https://www.openstreetmap.org/api/0.6/map?bbox={currentLon},{currentLat},{currentLon + lonStep},{currentLat + latStep}"""
             fileName = f"""{xmlFolder}/osm_{currentLat},{currentLon},{currentLat + latStep},{currentLon + lonStep}.xml"""
-            print(f"""{datetime.now().strftime("%H:%M:%S")} - Download {fileName}""")
+            print(f"""{datetime.now().strftime("%H:%M:%S")} - Download #{requestNo} -  {fileName}""")
 
             try:
                 response = requests.get(url, timeout=15)
@@ -330,8 +352,8 @@ def downloadOSMXml(xmlFolder: str, dbFile: str, fromLat: float, fromLon: float, 
             if response.status_code == 509:
                 retryAfter = response.headers['retry-after']
                 retryAfter = int(retryAfter) if retryAfter else 5
+                print(f"""{datetime.now().strftime("%H:%M:%S")}  - Pause {retryAfter} seconds""")
                 sleep(retryAfter + 1)
-                print(f"""{datetime.now().strftime("%H:%M:%S")}  - Pause""")
             elif response.status_code == 200:
                 with open(fileName, 'wb') as file:
                     file.write(response.content)
