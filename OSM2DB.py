@@ -325,8 +325,6 @@ def downloadOSMXml(xmlFolder: str, dbFile: str, fromLat: float, fromLon: float, 
         lonStep = min(max(lonStep, minStep), maxStep)
         if k < 1:
             sleep(1)
-
-
     
 
     while currentLat <= toLat:
@@ -341,7 +339,11 @@ def downloadOSMXml(xmlFolder: str, dbFile: str, fromLat: float, fromLon: float, 
             print(f"""{datetime.now().strftime("%H:%M:%S")} - Download #{requestNo} -  {fileName}""")
 
             try:
-                response = requests.get(url, timeout=15)
+                #proxy = '95.214.9.93:3128'
+                #proxy = 'https://110.89.51.18:443'
+                #proxy = '159.223.225.118:8888'
+                proxy = ''
+                response = requests.get(url, proxies={'https': proxy}, timeout=15)
             except requests.exceptions.RequestException as e:
                 print('Ошибка:', e)
                 __fixLonStep(0.7)
