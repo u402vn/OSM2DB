@@ -295,9 +295,21 @@ def postprocessDb(dbFile: str):
     cursor.execute('''create index relation_bounds_lat_lon_idx on way (minLat, minLon, maxLat, maxLon)''')
     conn.commit()
 
+    print(f'{datetime.now().strftime("%H:%M:%S")} Create index for waytag (wayid, k, v)')
+    cursor.execute('''create index waytag_id_k_v on waytag(wayid, k, v)''')
+    conn.commit()
+
+    print(f'{datetime.now().strftime("%H:%M:%S")} Create index for node_way(nodeid')
+    cursor.execute('''create index node_way_nodeid_idx on node_way(nodeid)''')
+    conn.commit()
+
 
     print(f'{datetime.now().strftime("%H:%M:%S")} Vacuum')
     cursor.execute('''VACUUM''')
+    conn.commit()
+
+    print(f'{datetime.now().strftime("%H:%M:%S")} Analyze')
+    cursor.execute('''analyze''')
     conn.commit()
 
     print(f'{datetime.now().strftime("%H:%M:%S")} completed')
